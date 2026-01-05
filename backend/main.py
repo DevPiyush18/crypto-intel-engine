@@ -1,10 +1,16 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+
+from backend.auth.routes import router as auth_router
+from backend.auth.deps import get_current_user
+
 from backend.signals.engine import generate_signal
 from backend.analytics.regime import load_data, compute_features, detect_regime
 from backend.risk.crash import crash_probability
 
 app = FastAPI()
+
+app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,19 +25,19 @@ def root():
     return {"status": "Crypto Intelligence Engine running"}
 
 @app.get("/signal")
-def get_signal():
+def get_signal(user_id: str = Depends(get_current_user)):
     signal, confidence = generate_signal()
     return {"signal": signal, "confidence": confidence}
 
 @app.get("/regime")
-def get_regime():
+def get_regime(user_id: str = Depends(get_current_user)):
     df = load_data()
     df = compute_features(df)
     regime = detect_regime(df)
     return {"regime": regime}
 
 @app.get("/risk")
-def get_risk():
+def get_risk(user_id: str = Depends(get_current_user)):
     df = load_data()
     df = df.dropna()
     if len(df) < 10:
@@ -40,6 +46,6 @@ def get_risk():
     return {"crash_probability": prob}
 
 @app.get("/prices")
-def get_prices():
+def get_prices(user_id: str = Depends(get_current_user)):
     df = load_data()
     return df.tail(50).to_dict(orient="records")
