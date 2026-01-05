@@ -6,6 +6,7 @@ function App() {
   const [risk, setRisk] = useState({});
 
   useEffect(() => {
+  const loadData = () => {
     fetch("http://127.0.0.1:8000/signal")
       .then(res => res.json())
       .then(data => setSignal(data));
@@ -17,7 +18,13 @@ function App() {
     fetch("http://127.0.0.1:8000/risk")
       .then(res => res.json())
       .then(data => setRisk(data));
-  }, []);
+  };
+
+  loadData();
+  const interval = setInterval(loadData, 5000);
+  return () => clearInterval(interval);
+}, []);
+
 
   return (
     <div style={{ padding: 40, fontFamily: "Arial" }}>
