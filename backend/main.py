@@ -38,3 +38,8 @@ def get_risk():
         return {"error": "Not enough data"}
     prob = crash_probability(df)
     return {"crash_probability": prob}
+
+@app.get("/prices")
+def get_prices():
+    df = load_data()
+    return df.tail(50).to_dict(orient="records")
