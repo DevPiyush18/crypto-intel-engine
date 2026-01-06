@@ -8,9 +8,16 @@ from backend.signals.engine import generate_signal
 from backend.analytics.regime import load_data, compute_features, detect_regime
 from backend.risk.crash import crash_probability
 
+from backend.profile.routes import router as profile_router
+from backend.portfolio.routes import router as portfolio_router
+
 app = FastAPI()
 
 app.include_router(auth_router)
+
+app.include_router(profile_router)
+app.include_router(portfolio_router)
+
 
 app.add_middleware(
     CORSMiddleware,
