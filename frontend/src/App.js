@@ -1,97 +1,134 @@
-import { useState, useEffect } from "react";
-import { Line } from "react-chartjs-2";
+import { useState, useEffect } from "react"
+import { motion } from "framer-motion"
+import { Line } from "react-chartjs-2"
 import {
   Chart as ChartJS,
   LineElement,
   CategoryScale,
   LinearScale,
   PointElement
-} from "chart.js";
+} from "chart.js"
 
-ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement);
+ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement)
 
-function App() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [token, setToken] = useState(localStorage.getItem("token"));
-  const [signal, setSignal] = useState({});
-  const [regime, setRegime] = useState({});
-  const [risk, setRisk] = useState({});
-  const [prices, setPrices] = useState([]);
+export default function App() {
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [token, setToken] = useState(localStorage.getItem("token"))
+
+  const [signal, setSignal] = useState({})
+  const [regime, setRegime] = useState({})
+  const [risk, setRisk] = useState({})
+  const [prices, setPrices] = useState([])
+
+  const API = "http://127.0.0.1:8000"
 
   const login = async () => {
-    const res = await fetch("http://127.0.0.1:8000/auth/login", {
+    const res = await fetch(`${API}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    localStorage.setItem("token", data.access_token);
-    setToken(data.access_token);
-  };
+    })
+    const data = await res.json()
+    localStorage.setItem("token", data.access_token)
+    setToken(data.access_token)
+  }
+
+  const logout = () => {
+    localStorage.removeItem("token")
+    setToken(null)
+  }
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) return
+    const headers = { Authorization: `Bearer ${token}` }
+
+    const safeFetch = async (url, setter) => {
+      try {
+        const res = await fetch(url, { headers })
+        if (!res.ok) return
+        const data = await res.json()
+        setter(data)
+      } catch {}
+    }
 
     const loadData = () => {
-      fetch("http://127.0.0.1:8000/signal", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(res => res.json())
-        .then(data => setSignal(data));
+      safeFetch(`${API}/signal`, setSignal)
+      safeFetch(`${API}/regime`, setRegime)
+      safeFetch(`${API}/risk`, setRisk)
+      safeFetch(`${API}/prices`, setPrices)
+    }
 
-      fetch("http://127.0.0.1:8000/regime", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(res => res.json())
-        .then(data => setRegime(data));
-
-      fetch("http://127.0.0.1:8000/risk", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(res => res.json())
-        .then(data => setRisk(data));
-
-      fetch("http://127.0.0.1:8000/prices", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(res => res.json())
-        .then(data => setPrices(data));
-    };
-
-    loadData();
-    const interval = setInterval(loadData, 5000);
-    return () => clearInterval(interval);
-  }, [token]);
+    loadData()
+    const interval = setInterval(loadData, 5000)
+    return () => clearInterval(interval)
+  }, [token])
 
   if (!token) {
     return (
-      <div style={{ padding: 50 }}>
-        <h2>Login</h2>
-        <input placeholder="Email" onChange={e => setEmail(e.target.value)} />
-        <br /><br />
-        <input type="password" placeholder="Password" onChange={e => setPassword(e.target.value)} />
-        <br /><br />
-        <button onClick={login}>Login</button>
+      <div className="h-screen flex items-center justify-center bg-bg text-white">
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="bg-card p-10 rounded-2xl shadow-xl w-96 space-y-6">
+          <h1 className="text-2xl font-bold text-center">Crypto Intelligence</h1>
+
+          <input className="w-full p-3 rounded bg-bg border border-gray-700"
+            placeholder="Email" onChange={e => setEmail(e.target.value)} />
+
+          <input type="password" className="w-full p-3 rounded bg-bg border border-gray-700"
+            placeholder="Password" onChange={e => setPassword(e.target.value)} />
+
+          <button onClick={login}
+            className="w-full bg-accent py-3 rounded text-white font-semibold hover:opacity-90 transition">
+            Login
+          </button>
+        </motion.div>
       </div>
-    );
+    )
   }
 
+  const chartPrices = prices.length ? prices.map(p => p.price) : []
+  const chartLabels = prices.length ? prices.map(p => new Date(p.timestamp).toLocaleTimeString()) : []
+
   const chartData = {
-    labels: prices.map(p => new Date(p.timestamp).toLocaleTimeString()),
-    datasets: [{ label: "BTC Price", data: prices.map(p => p.price), borderColor: "blue" }]
-  };
+    labels: chartLabels,
+    datasets: [{
+      label: "BTC Price",
+      data: chartPrices,
+      borderColor: "#3B82F6",
+      tension: 0.35
+    }]
+  }
 
   return (
-    <div style={{ padding: 40 }}>
-      <h1>Crypto Intelligence Dashboard</h1>
-      <p>Signal: {signal.signal}</p>
-      <p>Confidence: {signal.confidence}</p>
-      <p>Regime: {regime.regime}</p>
-      <p>Crash Probability: {risk.crash_probability}</p>
-      <Line data={chartData} />
+    <div className="min-h-screen bg-bg text-white p-8">
+      <header className="flex justify-between items-center mb-10">
+        <h1 className="text-3xl font-bold">Crypto Intelligence Dashboard</h1>
+        <button onClick={logout} className="text-muted hover:text-white transition">Logout</button>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+        <Card title="Trade Signal" value={signal.signal} />
+        <Card title="Market Regime" value={regime.regime} />
+        <Card title="Crash Probability" value={risk.crash_probability} />
+      </div>
+
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+        className="bg-card p-6 rounded-2xl shadow-xl">
+        <h2 className="mb-4 text-xl font-semibold">Live BTC Price</h2>
+        <Line data={chartData} />
+      </motion.div>
     </div>
-  );
+  )
 }
 
-export default App;
+function Card({ title, value }) {
+  return (
+    <motion.div whileHover={{ scale: 1.03 }}
+      className="bg-card p-6 rounded-2xl shadow-lg">
+      <p className="text-muted mb-2">{title}</p>
+      <h2 className="text-2xl font-bold">{value || "--"}</h2>
+    </motion.div>
+  )
+}
