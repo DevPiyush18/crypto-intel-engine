@@ -1,48 +1,66 @@
 import os
-from fastapi import APIRouter, Request
-from authlib.integrations.starlette_client import OAuth
-from starlette.responses import RedirectResponse
-from backend.data.db import get_connection
-from backend.auth.jwt import create_access_token
-print("GOOGLE CLIENT ID:", os.getenv("GOOGLE_CLIENT_ID"))
+import requests
+from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import RedirectResponse
 
-router = APIRouter(prefix="/auth/google")
+router = APIRouter()
 
-oauth = OAuth()
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 
-oauth.register(
-    name="google",
-    client_id=os.getenv("GOOGLE_CLIENT_ID"),
-    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile"}
-)
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
-@router.get("/login")
-async def login(request: Request):
-    redirect_uri = "http://localhost:8000/auth/google/callback"
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+REDIRECT_URI = "http://localhost:8000/auth/google/callback"
 
-@router.get("/callback")
-async def callback(request: Request):
-    token = await oauth.google.authorize_access_token(request)
-    user = token["userinfo"]
 
-    conn = get_connection()
-    cur = conn.cursor()
+@router.get("/auth/google/login")
+def google_login():
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "prompt": "select_account",
+    }
 
-    cur.execute("SELECT id FROM users WHERE email=%s", (user["email"],))
-    existing = cur.fetchone()
+    url = f"{GOOGLE_AUTH_URL}?" + "&".join(f"{k}={v}" for k, v in params.items())
+    return RedirectResponse(url)
 
-    if not existing:
-        cur.execute(
-            "INSERT INTO users (email, hashed_password) VALUES (%s,%s) RETURNING id",
-            (user["email"], "google")
-        )
-        user_id = cur.fetchone()[0]
-        conn.commit()
-    else:
-        user_id = existing[0]
 
-    jwt = create_access_token({"sub": str(user_id)})
-    return RedirectResponse(f"http://localhost:3000?token={jwt}")
+@router.get("/auth/google/callback")
+def google_callback(request: Request, code: str):
+    token_response = requests.post(
+        GOOGLE_TOKEN_URL,
+        data={
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": REDIRECT_URI,
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    ).json()
+
+    access_token = token_response.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Failed to obtain access token")
+
+    userinfo = requests.get(
+        GOOGLE_USERINFO_URL,
+        headers={"Authorization": f"Bearer {access_token}"},
+    ).json()
+
+    if "email" not in userinfo:
+        raise HTTPException(status_code=400, detail="Failed to fetch user info")
+
+    # 🧠 STORE SESSION — this is the heart of the system
+    request.session["user"] = {
+        "id": userinfo["id"],
+        "email": userinfo["email"],
+        "name": userinfo.get("name", ""),
+    }
+
+    return RedirectResponse("http://localhost:3000", status_code=302)
